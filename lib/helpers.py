@@ -4,6 +4,7 @@ from os import system, name
 
 
 def exit_program():
+    clear_console()
     print("Goodbye!")
     exit()
 

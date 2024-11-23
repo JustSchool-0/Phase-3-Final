@@ -1,178 +1,294 @@
 # lib/cli.py
 
-from helpers import exit_program, helper_1, clear_console
+import sqlite3
+from sqlite3 import Connection
+from typing import List
 
-from models import DatabaseManager, RecipeCategory, Recipe
-
-db_manager = DatabaseManager()
-category_model = RecipeCategory(db_manager)
-recipe_model = Recipe(db_manager)
-
-
-def setup():
-    try:
-        recipe_model.add_recipe("Chicken Noodle", category_name="Soups")
-        recipe_model.add_recipe("Carrot", category_name="Soups")
-        recipe_model.add_recipe("Lentil", category_name="Soups")
-
-        recipe_model.add_recipe("Fish", category_name="Meats")
-        recipe_model.add_recipe("Steak", category_name="Meats")
-        recipe_model.add_recipe("Bacon", category_name="Meats")
-
-        recipe_model.add_recipe("Pancake", category_name="Breakfast")
-        recipe_model.add_recipe("Waffle", category_name="Breakfast")
-        recipe_model.add_recipe("Oatmeal", category_name="Breakfast")
-
-        recipe_model.add_recipe("Pumpkin Pie", category_name="Desserts")
-        recipe_model.add_recipe("Brownie", category_name="Desserts")
-    except ValueError as e:
-        print(e)
+from category import Category
+from helpers import exit_program, clear_console
+from recipe import Recipe
 
 
-def main():
-    setup()
-    menu()
+def __init__(self):
+    self.connection = None
 
 
-def menu():
+def menu_main():
     clear_console()
-    print("Please select an option:")
-    print("0. Exit the program")
+    print("MAIN MENU")
+    print("Please choose an option:")
+    print("0. Exit program")
     print("1. View recipes")
 
     choice = input("> ")
-    if (choice == "0"):
+    if choice == "0":
         exit_program()
-    elif (choice == "1"):
-        category_menu()
+    elif choice == "1":
+        menu_categories()
+    else:
+        menu_main()
 
 
-def category_menu():
+def menu_categories():
+    option_count: int = 3
+
     clear_console()
-    print("Please select an option:")
+    print("CATEGORIES")
+    print("Please choose an option:")
+    print("0. Go back")
+    print("1. Add recipe")
+    print("2. Delete category")
+
+    index: int = option_count
+    categories: List[Category] = Category.get_all()
+
+    # List all categories
+    for c in categories:
+        print(f"{index}. {c.name}")
+        index += 1
+
+    choice: str = input("> ")
+    if choice == "0":  # Back to main menu
+        menu_main()
+    elif choice == "1":
+        menu_add_recipe()  # To add recipe menu
+    elif choice == "2":
+        menu_delete_category(categories)  # To delete category menu
+    else:
+        try:
+            selected: int = int(choice)
+            if selected >= (len(categories) + option_count):
+                raise IndexError
+
+            i: int = selected - option_count
+            category: Category = categories[i]
+            menu_recipes(category)
+        except IndexError:
+            menu_categories()
+
+
+def menu_recipes(category: Category):
+    option_count: int = 2
+
+    clear_console()
+    print(f"{category.name.upper()} RECIPES")
+    print("Please choose an option:")
     print("0. Go back")
     print("1. Add recipe")
 
-    # for each of all categories, print(f"{index}. {category_name}")
-    # start at index 2 to account for other available actions
-    category_dict = {}
-    index = 2
-    for category_id, category_name in category_model.get_categories():
-        category_dict.update({f"{index}": category_name})
-        print(f"{index}. {category_name}")
+    index: int = option_count
+    recipes: List[Recipe] = category.recipes
+    # List all recipes in this category
+    for r in recipes:
+        print(f"{index}. {r.name}")
         index += 1
 
-    def callback(choice):
-        if (choice == "1"):
-            add_recipe_menu(None)
-        else:
-            name = category_dict.get(choice)
-            recipe_menu(category_name=name)
+    choice: str = input("> ")
+    if choice == "0":  # Back to categories menu
+        menu_categories()
+    elif choice == "1":  # To add recipe menu
+        menu_add_recipe(category)
+    else:
+        try:
+            # Account for the indices before we started listing recipes
+            i: int = int(choice) - option_count
+            recipe: Recipe = recipes[i]
+            menu_recipe_details(recipe, category)
+        except IndexError:
+            menu_recipes(category)
 
-    await_input(menu, callback, index)
 
-
-def recipe_menu(category_name):
+def menu_recipe_details(recipe: Recipe, category: Category):
     clear_console()
-    print("Please select an option:")
-    print("0. Go back")
-    print("1. Add recipe")
 
-    # for each recipe in category, print(f"{index}. {recipe_name}")
-    # start at index 2 to account for other available actions
-    recipe_dict = {}
-    index = 2
-    for recipe in recipe_model.get_recipes_by_category_name(category_name):
-        recipe_name = recipe[1]
-        recipe_obj = {"id": recipe[0], "name": recipe_name, "ingredients": recipe[2]}
-        recipe_dict.update({f"{index}": recipe_obj})
-        print(f"{index}. {recipe_name}")
-        index += 1
-
-    def callback(choice):
-        if (choice == "1"):
-            add_recipe_menu(category_name)
-        else:
-            recipe = recipe_dict.get(choice)
-            recipe_info(recipe["id"], recipe["name"], recipe["ingredients"], category_name)
-
-    await_input(category_menu, callback, index)
-
-
-def recipe_info(id, name, ingredients, category_name):
-    clear_console()
-    print("Please select an option:")
+    print("RECIPE DETAILS")
+    print("Please choose an option:")
     print("0. Go back")
     print("1. Update recipe")
     print("2. Delete recipe")
-    print(f"Name: {name}")
-    print(f"Ingredients: {ingredients}")
-    print(f"Category: {category_name}")
+    print(f"Name: {recipe.name}")
+    print(f"Ingredients: {recipe.ingredients}")
+    print(f"Category: {recipe.category.name}")
 
-    def else_callback(choice):
-        if (choice == "1"):
-            print("Please enter a new recipe name: ")
-            temp_name = input("> ")
-            print("Please enter new recipe ingredients: ")
-            temp_ingredients = input("> ")
+    choice = input("> ")
+    if choice == "0":  # Back to categories menu
+        menu_recipes(category)
+    elif choice == "1":  # To update recipe menu
+        menu_update_recipe(recipe, category)
+    elif choice == "2":  # Delete this recipe, then back to categories menu
+        recipe.delete()
+        category.remove_recipe(recipe)
+        category.save()
+        menu_recipes(category)
+    else:
+        menu_recipe_details(recipe, category)
 
-            updated_name = name if not temp_name else temp_name
-            updated_ingredients = (
-                ingredients if not temp_ingredients else temp_ingredients
-            )
 
-            recipe_model.update_recipe(id, updated_name, updated_ingredients)
-            recipe_info(id, updated_name, updated_ingredients, category_name)
-        if (choice == "2"):
-            recipe_model.delete_recipe(id)
-            # Take the user all the way back the category manu to
-            # account for the possibility that this recipe's category 
-            # was also deleted
-            category_menu()
-
-    def back_callback():
-        recipe_menu(category_name)
-
-    await_input(back_callback, else_callback, 3)
-
-def add_recipe_menu(category_name):
+def menu_add_recipe(category: Category = None):
     clear_console()
 
-    # Name
-    name = ""
-    while not name:
-        print("Please enter recipe name: ")
-        name = input("> ")
+    print("ADDING RECIPE")
 
-    # Ingredients
-    ingredients = ""
-    while not ingredients:
-        print("Please enter recipe ingredients: ")
-        ingredients = input("> ")
+    new_name: str = input("Please enter recipe name: ")
+    new_ingredients: str = input("Please enter recipe ingredients: ")
+    new_category: Category
 
-    # Category
-    category = category_name
-    while not category:
-        print("Please enter recipe category: ")
-        category = input("> ")
+    # If adding from the category menu
+    if not category:
+        # Ask user for category name
+        c_name: str = ""
+        while True:
+            c_name = input("Please enter recipe category: ")
+            if c_name:
+                break
+            else:
+                print("Category cannot have empty name!")
 
-    recipe_model.add_recipe(name, category, ingredients)
-    if (not category_name):
-        category_menu()
+        # Look for existing category with the given name
+        new_category = Category.get_by_name(c_name)
+
+        # If the category the user specified doesn't exist, create it
+        if not new_category:
+            new_category = Category(c_name)
+
+    # Else adding from the recipe menu
     else:
-        recipe_menu(category_name)
+        new_category = category
+
+    # Create recipe object & add it to the category
+    recipe: Recipe = Recipe(new_name, new_ingredients, new_category)
+    new_category.add_recipe(recipe)
+    new_category.save()
+
+    # Show the details of the recipe we just added
+    menu_recipe_details(recipe, new_category)
 
 
-def await_input(back_callback, else_callback, option_count):
-    choice = input("> ")
-    if (choice == "0"):
-        back_callback()
-    elif (int(choice) < 0) or (int(choice) >= option_count):
-        print("Invalid input!")
-        await_input(back_callback, else_callback, option_count)
+def menu_update_recipe(recipe: Recipe, category: Category):
+    clear_console()
+
+    print(f"UPDATING {recipe.name.upper()} RECIPE")
+
+    new_name: str = input(
+        "Please enter recipe name (leave blank to keep original): "
+    )
+    new_ingredients: str = input(
+        "Please enter recipe ingredients (leave blank to keep original): "
+    )
+    c_name: str = input(
+        "Please enter recipe category (leave blank to keep original): "
+    )
+
+    if new_name:
+        recipe.name = new_name
+    if new_ingredients:
+        recipe.ingredients = new_ingredients
+    if c_name:
+        category.remove_recipe(recipe)
+        # Check the db for a category with the user
+        # provided name, otherwise create a new category
+        category = Category.get_by_name(c_name)
+        if not category:
+            category = Category(c_name)
+        recipe.category = category
+
+    recipe.save()
+
+    menu_recipe_details(recipe, category)
+
+
+def menu_delete_category(categories: List[Category]):
+    option_count: int = 1
+
+    clear_console()
+    print("DELETE CATEGORY")
+    print("Please choose a category to delete or enter 0 to cancel: ")
+
+    index: int = option_count
+    for c in categories:
+        print(f"{index}. {c.name}")
+        index += 1
+
+    choice: str = input("> ")
+    if choice == "0":
+        menu_categories()
     else:
-        else_callback(choice)
+        try:
+            i = int(choice) - 1
+            category_to_delete: Category = categories[i]
+            if category_to_delete:
+                category_to_delete.delete()
+        except IndexError:
+            menu_delete_category(categories)
+
+        menu_categories()
+
+
+# Create tables if they don't exist
+# noinspection SqlNoDataSourceInspection
+def create_tables(connection: Connection):
+    create_categories_table = """
+    CREATE TABLE IF NOT EXISTS categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE
+    );
+    """
+
+    create_recipes_table = """
+    CREATE TABLE IF NOT EXISTS recipes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        ingredients TEXT NOT NULL,
+        category_id INTEGER,
+        FOREIGN KEY (category_id) REFERENCES categories(id)
+    );
+    """
+
+    cursor = connection.cursor()
+    cursor.execute(create_categories_table)
+    cursor.execute(create_recipes_table)
+    connection.commit()
+
+
+def run():
+    # Connect to SQLite database
+    connection: Connection = sqlite3.connect("recipes.db")
+    try:
+        # Create tables if they don't exist
+        create_tables(connection)
+
+        Category.set_connection(connection)
+        Recipe.set_connection(connection)
+
+        # Create category and add recipe
+        category: Category = Category("Sweets")
+        category.add_recipe(Recipe("Cake", "Flour, eggs, milk", category))
+        category.add_recipe(
+            Recipe("Pumpkin Pie", "Flour, eggs, milk, pumpkin", category)
+        )
+        category.save()
+        category: Category = Category("Meats")
+        category.add_recipe(Recipe("Bacon", "Pig", category))
+        category.add_recipe(Recipe("Steak", "Cow", category))
+        category.add_recipe(Recipe("Fried Chicken", "Chicken, breading", category))
+        category.save()
+        category: Category = Category("Baked Goods")
+        category.add_recipe(Recipe("Bread", "Flour, water, yeast", category))
+        category.save()
+        category: Category = Category("Breakfast")
+        category.add_recipe(Recipe("Pancakes", "Flour, sugar, milk", category))
+        category.add_recipe(Recipe("Waffles", "Flour, sugar, milk", category))
+        category.add_recipe(Recipe("Oatmeal", "Oats, salt, water", category))
+        category.save()
+
+        menu_main()
+
+    except Exception as e:
+        print(f"Error: {e}")
+    finally:
+        if connection:
+            connection.close()
 
 
 if __name__ == "__main__":
-    main()
+    run()
